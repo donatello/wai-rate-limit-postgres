@@ -9,22 +9,32 @@ on:
     # additionally run once per week (At 00:00 on Sunday) to maintain cache
     - cron: '0 0 * * 0'
 
+# This ensures that previous jobs for the PR are canceled when the PR is
+# updated.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   cabal:
     name: ${{ matrix.os }} / ghc ${{ matrix.ghc }}
     runs-on: ${{ matrix.os }}
+
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_PASSWORD: "postgres"
+
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        cabal: ["3.0"]
+        os: [ubuntu-latest]
+        cabal: ["3.6"]
         ghc:
           - "8.10.7"
           - "9.0.2"
-        exclude:
-          - os: macOS-latest
-            ghc: 8.10.7
-          - os: windows-latest
-            ghc: 8.10.7
 
     steps:
     - uses: actions/checkout@v2
@@ -59,6 +69,8 @@ jobs:
         cabal build all
 
     - name: Test
+      env:
+        PG_DB_URI: "postgres://postgres:postgres@localhost:5432/postgres"
       run: |
         cabal test all
 
