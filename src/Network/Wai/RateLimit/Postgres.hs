@@ -100,10 +100,11 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
             " "
             [ "INSERT INTO",
               tableName,
+              "as rl",
               "(key, usage) VALUES (?, ?)",
               "ON CONFLICT (key) DO UPDATE SET",
-              "usage = CASE WHEN rate_limiter.expires_at > CURRENT_TIMESTAMP THEN rate_limiter.usage + EXCLUDED.usage ELSE EXCLUDED.usage END,",
-              "expires_at = CASE WHEN rate_limiter.expires_at > CURRENT_TIMESTAMP THEN rate_limiter.expires_at ELSE CURRENT_TIMESTAMP + '1 week'::INTERVAL END",
+              "usage = CASE WHEN rl.expires_at > CURRENT_TIMESTAMP THEN rl.usage + EXCLUDED.usage ELSE EXCLUDED.usage END,",
+              "expires_at = CASE WHEN rl.expires_at > CURRENT_TIMESTAMP THEN rl.expires_at ELSE CURRENT_TIMESTAMP + '1 week'::INTERVAL END",
               "RETURNING usage"
             ]
 
