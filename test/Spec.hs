@@ -37,7 +37,7 @@ mkConnPool = do
 mkTestWaiApp :: Integer -> Integer -> ByteString -> IO Wai.Application
 mkTestWaiApp seconds limit key = do
   pool <- mkConnPool
-  pgBackend <- postgresBackend pool "rate_limiter"
+  pgBackend <- postgresBackend pool "rate_limiter_1"
   let app _ respond = respond $ Wai.responseLBS status200 [] "Ok!"
       strategy = R.fixedWindow pgBackend seconds limit (const $ return key)
       middleware = R.rateLimiting strategy
