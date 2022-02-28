@@ -86,7 +86,6 @@ pgBackendGetUsage p tableName key = withResource p $ \c ->
 pgBackendIncAndGetUsage :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError Integer)
 pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
   res <- try $ PG.query c incAndGetQuery (key, usage) `catches` sqlHandlers
-  print res
   return $ do
     rows <- res
     case rows of
@@ -110,7 +109,6 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
 
 pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError ())
 pgBackendExpireIn p tableName key seconds = withResource p $ \c -> do
-  putText "Called expire in!"
   res <- try $ PG.execute c expireInQuery (seconds, key) `catches` sqlHandlers
   return $ do
     count <- res
