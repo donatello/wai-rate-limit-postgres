@@ -3,6 +3,10 @@
 `wai-rate-limit-postgres` uses [PVP Versioning][1].
 The changelog is available [on GitHub][2].
 
+## 0.3.0.0
+
+* Removed unnecessary debug prints
+
 ## 0.2.0.0
 
 * Fix bug in table name reference (#1)
