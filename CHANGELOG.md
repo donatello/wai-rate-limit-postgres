@@ -3,6 +3,10 @@
 `wai-rate-limit-postgres` uses [PVP Versioning][1].
 The changelog is available [on GitHub][2].
 
+## 0.4.0.0
+
+* Fix encoding bug by changing key type to `bytea` (#5)
+
 ## 0.3.0.0
 
 * Removed unnecessary debug prints
