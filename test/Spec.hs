@@ -1,8 +1,13 @@
 module Main (main) where
 
 import Control.Concurrent
-import Control.Exception
-import Data.Pool
+  ( ThreadId,
+    forkIO,
+    killThread,
+    threadDelay,
+  )
+import Control.Exception (bracket, throwIO)
+import Data.Pool (Pool, createPool)
 import qualified Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.URL (parseDatabaseUrl)
 import Network.HTTP.Client (Manager, defaultManagerSettings, httpLbs, newManager, parseRequest, responseStatus)
@@ -10,12 +15,12 @@ import Network.HTTP.Types (status200, statusCode)
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.RateLimit as R
-import Network.Wai.RateLimit.Postgres
+import Network.Wai.RateLimit.Postgres (postgresBackend)
 import qualified Network.Wai.RateLimit.Strategy as R
-import System.Environment.Blank
-import System.IO.Error
-import Test.Tasty
-import Test.Tasty.HUnit
+import System.Environment.Blank (getEnv)
+import System.IO.Error (userError)
+import Test.Tasty (defaultMain)
+import Test.Tasty.HUnit (assertFailure, testCaseSteps)
 
 -- | Example value = "postgres://postgres:postgres@localhost:5432/postgres"
 testPGEnv :: String
@@ -63,7 +68,6 @@ main =
       $ \step ->
         do
           step "Limit excessive requests (1)"
-
           bracket
             (mkTestWaiApp 1 2 "key1" >>= launchApp)
             tearDownApp
@@ -74,7 +78,6 @@ main =
                 assertFailure "Not ratelimited!"
 
           step "Limit excessive requests (2)"
-
           bracket
             (mkTestWaiApp 1 3 "key2" >>= launchApp)
             tearDownApp
@@ -85,7 +88,6 @@ main =
                 assertFailure "Unexpected result!"
 
           step "Allow non-excessive requests"
-
           bracket
             (mkTestWaiApp 1 3 "key3" >>= launchApp)
             tearDownApp
@@ -94,3 +96,30 @@ main =
               rs <- replicateM 3 $ mkReq mgr
               when (rs /= [200, 200, 200]) $
                 assertFailure "Unexpected result!"
+
+          step "Allow excessive requests, slow down and then be allowed"
+          bracket
+            (mkTestWaiApp 1 1 "key4" >>= launchApp)
+            tearDownApp
+            $ \_ -> do
+              mgr <- newManager defaultManagerSettings
+              rs <- replicateM 3 $ mkReq mgr
+              when (rs /= [200, 429, 429]) $
+                assertFailure "Unexpected result!"
+              threadDelay 1_000_000
+              rs2 <- replicateM 1 $ mkReq mgr
+              when (rs2 /= [200]) $
+                assertFailure "Unexpected result!"
+
+          step "Allow keys that are invalid as unicode strings"
+          let invalidUtf8String = "\187" :: ByteString
+          when (isRight (decodeUtf8Strict invalidUtf8String :: Either UnicodeException Text)) $
+            assertFailure "`invalidUtf8String` appears to have a valid UTF8 string"
+          bracket
+            (mkTestWaiApp 1 3 invalidUtf8String >>= launchApp)
+            tearDownApp
+            $ \_ -> do
+              mgr <- newManager defaultManagerSettings
+              rs <- replicateM 3 $ mkReq mgr
+              when (rs /= [200, 200, 200]) $
+                assertFailure $ "Unexpected result: " ++ show rs
