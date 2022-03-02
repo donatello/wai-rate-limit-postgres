@@ -86,7 +86,6 @@ pgBackendGetUsage p tableName key = withResource p $ \c ->
 pgBackendIncAndGetUsage :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError Integer)
 pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
   res <- try $ PG.query c incAndGetQuery (PG.Binary key, usage) `catches` sqlHandlers
-  print res
   return $ do
     rows <- res
     case rows of
