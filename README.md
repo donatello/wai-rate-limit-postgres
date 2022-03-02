@@ -8,3 +8,21 @@ This is a companion package to [wai-rate-limit](https://github.com/mbg/wai-rate-
 
 Depending on traffic and latency of PostgreSQL, this backend may or may not be appropriate for you.
 
+# Testing locally with Docker
+
+Start a PostgreSQL docker container in a terminal:
+
+
+```shell
+
+$ docker run --name some-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -it --rm postgres -c log_statement=all
+
+```
+
+Run tests in another terminal with:
+
+```shell
+
+$ export PG_DB_URI=postgres://postgres:postgres@localhost:5432/postgres
+$ cabal test
+```
