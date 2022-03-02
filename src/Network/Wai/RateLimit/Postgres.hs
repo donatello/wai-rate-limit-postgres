@@ -46,7 +46,7 @@ initPostgresBackend p tableName = withResource p $ \c -> do
             " "
             [ "CREATE TABLE IF NOT EXISTS",
               tableName,
-              "(key VARCHAR PRIMARY KEY,",
+              "(key BYTEA PRIMARY KEY,",
               "usage INT8 NOT NULL,",
               "expires_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP + '1 week'::INTERVAL)"
             ]
@@ -64,7 +64,7 @@ pgBackendGetUsage p tableName key = withResource p $ \c ->
   do
     res <-
       try $
-        PG.query c getUsageQuery (PG.Only key) `catches` sqlHandlers
+        PG.query c getUsageQuery (PG.Only $ PG.Binary key) `catches` sqlHandlers
     return $ do
       rows <- res
       case rows of
@@ -85,7 +85,8 @@ pgBackendGetUsage p tableName key = withResource p $ \c ->
 
 pgBackendIncAndGetUsage :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError Integer)
 pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
-  res <- try $ PG.query c incAndGetQuery (key, usage) `catches` sqlHandlers
+  res <- try $ PG.query c incAndGetQuery (PG.Binary key, usage) `catches` sqlHandlers
+  print res
   return $ do
     rows <- res
     case rows of
@@ -109,7 +110,7 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
 
 pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError ())
 pgBackendExpireIn p tableName key seconds = withResource p $ \c -> do
-  res <- try $ PG.execute c expireInQuery (seconds, key) `catches` sqlHandlers
+  res <- try $ PG.execute c expireInQuery (seconds, PG.Binary key) `catches` sqlHandlers
   return $ do
     count <- res
     if count /= 1
