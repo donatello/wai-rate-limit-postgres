@@ -3,6 +3,11 @@
 `wai-rate-limit-postgres` uses [PVP Versioning][1].
 The changelog is available [on GitHub][2].
 
+## 0.6.0.0
+
+* Update library to work with wai-rate-limit 0.3.0.0 - needs major bump as types are user visible types are changed.
+* Now works work GHC 9.2
+
 ## 0.5.0.0
 
 * Remove last remaining debug print statement
