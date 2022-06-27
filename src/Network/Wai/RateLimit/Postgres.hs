@@ -11,11 +11,15 @@ module Network.Wai.RateLimit.Postgres
 where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Exception (Handler (..), catches, throwIO, try)
+import Control.Exception (Exception, Handler (..), catches, throwIO, try)
+import Control.Monad (forever, void)
+import Data.ByteString (ByteString)
 import Data.Pool (Pool, withResource)
+import Data.String (fromString)
+import Data.Text (Text, unpack)
 import qualified Data.Text as T
 import qualified Database.PostgreSQL.Simple as PG
-import Network.Wai.RateLimit.Backend (Backend (..))
+import Network.Wai.RateLimit.Backend (Backend (..), BackendError (..))
 
 -- | Represents reasons for why requests made to Postgres backend have failed.
 data PGBackendError
@@ -35,13 +39,13 @@ initPostgresBackend :: Pool PG.Connection -> Text -> IO ()
 initPostgresBackend p tableName = withResource p $ \c -> do
   res <- try $ PG.execute_ c createTableQuery
   either
-    (throwIO . PGBackendErrorInit)
+    (throwIO . BackendError . PGBackendErrorInit)
     (const $ return ())
     res
   where
     createTableQuery =
       fromString $
-        toString $
+        unpack $
           T.intercalate
             " "
             [ "CREATE TABLE IF NOT EXISTS",
@@ -53,28 +57,25 @@ initPostgresBackend p tableName = withResource p $ \c -> do
 
 sqlHandlers :: [Handler a]
 sqlHandlers =
-  [ Handler (throwIO . PGBackendErrorBugFmt),
-    Handler (throwIO . PGBackendErrorBugQry),
-    Handler (throwIO . PGBackendErrorBugRes),
-    Handler (throwIO . PGBackendErrorBugSql)
+  [ Handler (throwIO . BackendError . PGBackendErrorBugFmt),
+    Handler (throwIO . BackendError . PGBackendErrorBugQry),
+    Handler (throwIO . BackendError . PGBackendErrorBugRes),
+    Handler (throwIO . BackendError . PGBackendErrorBugSql)
   ]
 
-pgBackendGetUsage :: Pool PG.Connection -> Text -> ByteString -> IO (Either PGBackendError Integer)
+pgBackendGetUsage :: Pool PG.Connection -> Text -> ByteString -> IO Integer
 pgBackendGetUsage p tableName key = withResource p $ \c ->
   do
-    res <-
-      try $
-        PG.query c getUsageQuery (PG.Only $ PG.Binary key) `catches` sqlHandlers
-    return $ do
-      rows <- res
-      case rows of
-        [] -> Right 0
-        [PG.Only a] -> Right a
-        _ -> Left PGBackendErrorAtMostOneRow
+    rows <-
+      PG.query c getUsageQuery (PG.Only $ PG.Binary key) `catches` sqlHandlers
+    case rows of
+      [] -> pure 0
+      [PG.Only a] -> pure a
+      _ -> throwIO $ BackendError PGBackendErrorAtMostOneRow
   where
     getUsageQuery =
       fromString $
-        toString $
+        unpack $
           T.intercalate
             " "
             [ "SELECT usage FROM",
@@ -83,18 +84,16 @@ pgBackendGetUsage p tableName key = withResource p $ \c ->
               "AND expires_at > CURRENT_TIMESTAMP"
             ]
 
-pgBackendIncAndGetUsage :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError Integer)
+pgBackendIncAndGetUsage :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO Integer
 pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
-  res <- try $ PG.query c incAndGetQuery (PG.Binary key, usage) `catches` sqlHandlers
-  return $ do
-    rows <- res
-    case rows of
-      [PG.Only a] -> Right a
-      _ -> Left PGBackendErrorExactlyOneRow
+  rows <- PG.query c incAndGetQuery (PG.Binary key, usage) `catches` sqlHandlers
+  case rows of
+    [PG.Only a] -> pure a
+    _ -> throwIO $ BackendError PGBackendErrorExactlyOneRow
   where
     incAndGetQuery =
       fromString $
-        toString $
+        unpack $
           T.intercalate
             " "
             [ "INSERT INTO",
@@ -107,18 +106,16 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
               "RETURNING usage"
             ]
 
-pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO (Either PGBackendError ())
+pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO ()
 pgBackendExpireIn p tableName key seconds = withResource p $ \c -> do
-  res <- try $ PG.execute c expireInQuery (seconds, PG.Binary key) `catches` sqlHandlers
-  return $ do
-    count <- res
-    if count /= 1
-      then Left PGBackendErrorExactlyOneUpdate
-      else Right ()
+  count <- PG.execute c expireInQuery (seconds, PG.Binary key) `catches` sqlHandlers
+  if count /= 1
+    then throwIO $ BackendError PGBackendErrorExactlyOneUpdate
+    else pure ()
   where
     expireInQuery =
       fromString $
-        toString $
+        unpack $
           T.intercalate
             " "
             [ "UPDATE",
@@ -152,7 +149,7 @@ pgBackendCleanup p tableName = void $
 
     removeExpired =
       fromString $
-        toString $
+        unpack $
           T.intercalate
             " "
             [ "DELETE FROM",
@@ -166,7 +163,7 @@ pgBackendCleanup p tableName = void $
 -- and table name to use for storage. The table will be created if it does not
 -- exist. A thread is also launched to periodically clean up expired rows from
 -- the table.
-postgresBackend :: Pool PG.Connection -> Text -> IO (Backend ByteString PGBackendError)
+postgresBackend :: Pool PG.Connection -> Text -> IO (Backend ByteString)
 postgresBackend p tableName = do
   initPostgresBackend p tableName
   pgBackendCleanup p tableName

@@ -17,21 +17,19 @@ extra-doc-files:     README.md
                      CHANGELOG.md
 tested-with:         GHC == 8.10.7
                      GHC == 9.0.2
+                     GHC == 9.2.3
 
 source-repository head
   type:                git
   location:            https://github.com/donatello/wai-rate-limit-postgres.git
 
 common common-options
-  build-depends:       base >= 4.12 && < 5
-                     , relude ^>= 1.0
-                     , wai-rate-limit ^>= 0.1.0.0
+  build-depends:       base >= 4.14 && < 5
+                     , bytestring >= 0.10 && < 0.12
+                     , wai-rate-limit >= 0.3.0.0 && < 1.0
                      , postgresql-simple ^>= 0.6
-                     , text ^>= 1.2.4
-                     , resource-pool ^>= 0.2.3.2
-
-  mixins:              base hiding (Prelude)
-                     , relude (Relude as Prelude)
+                     , text >= 1.2.4 && < 2.1
+                     , resource-pool >= 0.2.3.2 && < 0.4
 
   ghc-options:         -Wall
                        -Wcompat
@@ -72,9 +70,10 @@ test-suite wai-rate-limit-postgres-test
   main-is:             Spec.hs
   build-depends:       wai-rate-limit-postgres
                      , postgresql-simple-url
-                     , resource-pool
+                     , resource-pool < 0.3
                      , tasty
                      , tasty-hunit
+                     , time-units
                      , http-client
                      , http-types
                      , warp
