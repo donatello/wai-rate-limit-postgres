@@ -109,9 +109,10 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
 pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO ()
 pgBackendExpireIn p tableName key seconds = withResource p $ \c -> do
   count <- PG.execute c expireInQuery (seconds, PG.Binary key) `catches` sqlHandlers
-  if count /= 1
-    then throwIO $ BackendError PGBackendErrorExactlyOneUpdate
-    else pure ()
+  case count of
+    0 -> void $ pgBackendIncAndGetUsage p tableName key 1
+    1 -> pure ()
+    _ -> throwIO $ BackendError PGBackendErrorExactlyOneUpdate
   where
     expireInQuery =
       fromString $
