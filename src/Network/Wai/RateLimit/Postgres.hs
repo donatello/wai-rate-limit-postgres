@@ -108,20 +108,30 @@ pgBackendIncAndGetUsage p tableName key usage = withResource p $ \c -> do
 
 pgBackendExpireIn :: Pool PG.Connection -> Text -> ByteString -> Integer -> IO ()
 pgBackendExpireIn p tableName key seconds = withResource p $ \c -> do
-  count <- PG.execute c expireInQuery (seconds, PG.Binary key) `catches` sqlHandlers
+  count <- PG.execute c expireInQuery (PG.Binary key, seconds) `catches` sqlHandlers
   if count /= 1
     then throwIO $ BackendError PGBackendErrorExactlyOneUpdate
     else pure ()
   where
+    -- This query should ideally just be `update .. set expires_at =
+    -- current_timestamp + ? inteval where key = ?`, however, there is a race in
+    -- wai-rate-limit between calling `backendIncAndGetUsage` and
+    -- `backendExpireIn` where the clean up thread can remove the row for which
+    -- the expiry needs to be updated.
+    --
+    -- As a way to mitigate this, if the row doesnt exist, we set the usage to
+    -- 1 and then set the expiry.
     expireInQuery =
       fromString $
         unpack $
           T.intercalate
             " "
-            [ "UPDATE",
+            [ "INSERT INTO",
               tableName,
-              "SET expires_at = CURRENT_TIMESTAMP + '? second'::interval",
-              "WHERE key = ?"
+              "as rl",
+              "(key, usage, expires_at) VALUES (?, 1, CURRENT_TIMESTAMP + '? second'::interval)",
+              "ON CONFLICT (key) DO UPDATE SET",
+              "expires_at = EXCLUDED.expires_at"
             ]
 
 pgBackendCleanup :: Pool PG.Connection -> Text -> IO ()
